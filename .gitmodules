@@ -1,0 +1,6 @@
+[submodule "BYBE-frontend"]
+	path = BYBE-frontend
+	url = https://github.com/TheAsel/BYBE-frontend/
+[submodule "BYBE-backend"]
+	path = BYBE-backend
+	url = https://github.com/RakuJa/BYBE/
