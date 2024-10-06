@@ -1,7 +1,17 @@
 # BYBE-Portable
-Multi-platform desktop client for the BYBE website
+Multi-platform portable (offline) application that bundles the BYBE website
 
 ## Build locally
+### Clone repository
+```bash
+git clone --recurse-submodules https://github.com/RakuJa/BYBE-Portable.git
+```
+### Test the application (does not export bundles)
+In the project directory, run
+```bash
+cargo tauri dev
+```
+### Build the bundle
 In the project directory, run
 ```bash
 cargo tauri build
