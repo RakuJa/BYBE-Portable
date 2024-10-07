@@ -1,7 +1,7 @@
 use bybe::InitializeLogResponsibility;
 use std::thread;
 use tauri::path::BaseDirectory;
-use tauri::Manager;
+use tauri::{App, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,13 +25,7 @@ pub fn run() {
                 .into_string()
                 .ok();
             // get DB
-            let db_path = app
-                .path()
-                .resolve("data/database.db", BaseDirectory::Resource)
-                .expect("Should find BYBE database inside resources")
-                .into_os_string()
-                .into_string()
-                .ok();
+            let db_path = get_db_path(app).ok();
             thread::spawn(move || {
                 bybe::start(env_path, db_path, InitializeLogResponsibility::Delegated)
                     .expect("Backend should be able to startup, port or ip busy?");
@@ -40,4 +34,33 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
+    let db_canonical_path = dunce::canonicalize(
+        app.path()
+            .resolve("data/database.db", BaseDirectory::Resource)?,
+    )?
+    .into_os_string()
+    .into_string();
+    if let Ok(x) = db_canonical_path {
+        Ok(x)
+    } else {
+        anyhow::bail!("Could not correctly get canonical path.")
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
+    let db_path = app
+        .path()
+        .resolve("data/database.db", BaseDirectory::Resource)?
+        .into_os_string()
+        .into_string();
+    if let Ok(x) = db_path {
+        Ok(x)
+    } else {
+        anyhow::bail!("Could not correctly get db path.")
+    }
 }

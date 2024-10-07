@@ -2,6 +2,11 @@
 Multi-platform portable (offline) application that bundles the BYBE website
 
 ## Build locally
+### Install Tauri-cli
+```bash
+cargo install tauri-cli
+```
+
 ### Clone repository
 ```bash
 git clone --recurse-submodules https://github.com/RakuJa/BYBE-Portable.git

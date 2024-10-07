@@ -33,6 +33,7 @@ tauri = { version = "2.0.1", features = [] }
 tauri-plugin-devtools = "2.0.0"
 tauri-plugin-log = "2.0.1"
 
+anyhow = "1.0.89"
 
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -41,3 +42,6 @@ log = "0.4"
 dotenvy = "0.15.7"
 
 bybe = {path = "../BYBE-backend" }
+
+[target.'cfg(windows)'.dependencies]
+dunce = { version = "1.0.5"}
