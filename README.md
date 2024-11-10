@@ -1,7 +1,7 @@
 # BYBE-Portable
 Multi-platform portable (offline) application that bundles the BYBE website
 
-## Build locally
+## Build base package locally for Linux/Windows/MacOS
 ### Install Tauri-cli
 ```bash
 cargo install tauri-cli
@@ -11,6 +11,17 @@ cargo install tauri-cli
 ```bash
 git clone --recurse-submodules https://github.com/RakuJa/BYBE-Portable.git
 ```
+### Copy the DB in home or change ENV variable
+To let BYBE aka BYBE-backend aka BYBE-core compile, you have to let the Rust library find the database.db file.
+This can be done either by:
+```bash
+cp . /full/path/to/BYBE-Portable/BYBE-tauri/data/database.db
+```
+or by:
+```bash
+export DATABASE_URL = /full/path/to/BYBE-Portable/BYBE-tauri/data/database.db
+```
+Important! It's better to avoid the latter, as it could result in unexpected behaviour during dev testing
 ### Test the application (does not export bundles)
 In the project directory, run
 ```bash
