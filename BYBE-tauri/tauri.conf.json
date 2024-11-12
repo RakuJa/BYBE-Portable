@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../BYBE-frontend/dist/spa",
     "devUrl": "http://localhost:9000",
-    "beforeDevCommand": "npm install && npm run dev",
-    "beforeBuildCommand": "npm install && npm run build"
+    "beforeDevCommand": "npm install && npm update && npm run dev",
+    "beforeBuildCommand": "npm install && npm update && npm run build"
   },
   "bundle": {
     "createUpdaterArtifacts": true,
