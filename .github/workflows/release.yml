@@ -58,7 +58,7 @@ jobs:
 
       - name: install frontend dependencies
         working-directory: BYBE-frontend
-        run: npm --prefix install
+        run: npm install
 
       - name: build BYBE-Backend downloading necessary data
         run: cargo make prebuild
