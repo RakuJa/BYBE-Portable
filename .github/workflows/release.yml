@@ -62,6 +62,8 @@ jobs:
 
       - name: build BYBE-Backend downloading necessary data
         run: cargo make prebuild
+        env:
+          DATABASE_URL: "sqlite://database.db"
 
       - uses: tauri-apps/tauri-action@v0
         env:
