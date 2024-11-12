@@ -6,9 +6,6 @@ on:
       - release
 
 # This workflow will trigger on each push to the `release` branch to create or update a GitHub release, build your app, and upload the artifacts to the release.
-env:
-  DATABASE_URL: "sqlite://BYBE-backend/database.db"
-  NO_STRIP: true
 jobs:
   publish-tauri:
     permissions:
@@ -69,6 +66,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          DATABASE_URL: "sqlite://BYBE-backend/database.db"
+          NO_STRIP: true
         with:
           tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
           releaseName: 'v__VERSION__'
