@@ -57,7 +57,8 @@ jobs:
         uses: davidB/rust-cargo-make@v1
 
       - name: install frontend dependencies
-        run: npm --prefix ./BYBE-frontend install
+        working-directory: BYBE-frontend
+        run: npm --prefix install
 
       - name: build BYBE-Backend downloading necessary data
         run: cargo make prebuild
@@ -66,6 +67,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           NO_STRIP: true
         with:
           tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
