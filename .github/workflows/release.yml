@@ -58,13 +58,15 @@ jobs:
         with:
           path: /BYBE-frontend/.env
 
-      - name: Copy BYBE-Portable .env to Frontend
-        run: |
-          if [ $RUNNER_OS != "Windows" ]; then
-            cp .env BYBE-frontend/.env
-          else
-            Copy-Item -Path .\.env -Destination .\BYBE-frontend\.env
-          fi
+      - name: Copy BYBE-Portable .env to Frontend (Windows)
+        if: matrix.platform == 'windows-latest'
+        run:
+          Copy-Item -Path .\.env -Destination .\BYBE-frontend\.env
+
+      - name: Copy BYBE-Portable .env to Frontend (Linux/Macos)
+        if: matrix.platform != 'windows-latest'
+        run:
+          cp .env BYBE-frontend/.env
 
 
       - name: install Cargo make
