@@ -1,13 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0-rc",
   "productName": "BYBE-Portable",
-  "version": "0.1.0",
+  "version": "2.3.0",
   "identifier": "com.danielegiachetto.bybe",
   "build": {
     "frontendDist": "../BYBE-frontend/dist/spa",
     "devUrl": "http://localhost:9000",
-    "beforeDevCommand": "cd ../BYBE-frontend && npm install && npm run dev",
-    "beforeBuildCommand": "cd ../BYBE-frontend && npm install && npm run build"
+    "beforeDevCommand": "npm install && npm update && npm run dev",
+    "beforeBuildCommand": "npm install && npm update && npm run build"
   },
   "bundle": {
     "createUpdaterArtifacts": true,
@@ -20,9 +20,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "data/*"
-    ]
+    "resources": {
+      "data/.env": ".env",
+      "../BYBE-backend/database.db": "database.db"
+    }
   },
   "app": {
     "security": {
@@ -50,6 +51,7 @@
     },
     "permissions": [
       "updater:default",
+      "window:all",
       {
         "identifier": "http:default",
         "allow": [

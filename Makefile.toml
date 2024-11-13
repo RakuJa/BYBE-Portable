@@ -1,0 +1,40 @@
+[tasks.clean-app]
+run_task = [
+    {name = ["clean-backend", "clean-tauri"]}
+]
+
+[tasks.clean-backend]
+cwd = "./BYBE-backend/"
+command = "cargo"
+args = ["clean"]
+
+[tasks.clean-tauri]
+cwd = "./BYBE-tauri/"
+command = "cargo"
+args = ["clean"]
+
+[tasks.prebuild]
+cwd = "./BYBE-backend/"
+command = "cargo"
+args = ["make", "bybe-release"]
+
+
+[tasks.build-multiplat-app]
+install_crate = "tauri-cli"
+command = "cargo"
+args = ["tauri", "build"]
+dependencies = ["clean-app", "prebuild"]
+
+[tasks.build-linux-app]
+install_crate = "tauri-cli"
+command = "cargo"
+args = ["tauri", "build"]
+dependencies = ["clean-app", "prebuild"]
+env = { NO_STRIP=true }
+
+
+[tasks.build-app]
+run_task = [
+    { name = "build-multiplat-app", condition = { platforms = ["windows", "mac"]} },
+    { name = "build-linux-app", condition = { platforms = ["linux"]} },
+]

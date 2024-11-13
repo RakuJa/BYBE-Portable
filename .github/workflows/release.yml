@@ -5,8 +5,9 @@ on:
     branches:
       - release
 
+env:
+  DATABASE_URL: "sqlite://database.db"
 # This workflow will trigger on each push to the `release` branch to create or update a GitHub release, build your app, and upload the artifacts to the release.
-
 jobs:
   publish-tauri:
     permissions:
@@ -27,6 +28,13 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+      - name: setup python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          check-latest: 'true'
 
       - name: setup node
         uses: actions/setup-node@v4
@@ -43,18 +51,43 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04' # This must match the platform value defined above.
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xapp
+
+      - name: Remove Frontend default .env
+        uses: JesseTG/rm@v1.0.3
+        with:
+          path: /BYBE-frontend/.env
+
+      - name: Copy BYBE-Portable .env to Frontend (Windows)
+        if: matrix.platform == 'windows-latest'
+        run:
+          Copy-Item -Path .\.env -Destination .\BYBE-frontend\.env
+
+      - name: Copy BYBE-Portable .env to Frontend (Linux/Macos)
+        if: matrix.platform != 'windows-latest'
+        run:
+          cp .env BYBE-frontend/.env
+
+      - name: install Cargo make
+        uses: davidB/rust-cargo-make@v1
 
       - name: install frontend dependencies
-        run: npm --prefix ./BYBE-frontend install
+        working-directory: BYBE-frontend
+        run: npm install
+
+      - name: build BYBE-Backend downloading necessary data
+        run: cargo make prebuild
 
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NO_STRIP: true
         with:
           tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
           releaseName: 'v__VERSION__'
-          releaseBody: 'See the assets to download this version and install. \n for more info on changes look at https://github.com/RakuJa/BYBE/releases and https://github.com/theasel/BYBE-frontend/releases'
+          releaseBody: 'For more info on changes look at https://github.com/RakuJa/BYBE/releases and https://github.com/theasel/BYBE-frontend/releases'
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
