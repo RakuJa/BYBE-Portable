@@ -19,7 +19,7 @@ pub fn run() {
             // Get Environmental Variables
             let env_path = app
                 .path()
-                .resolve("data/.env", BaseDirectory::Resource)
+                .resolve(".env", BaseDirectory::Resource)
                 .expect("Should find BYBE env variables inside resources")
                 .into_os_string()
                 .into_string()
@@ -40,7 +40,7 @@ pub fn run() {
 pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
     let db_canonical_path = dunce::canonicalize(
         app.path()
-            .resolve("data/database.db", BaseDirectory::Resource)?,
+            .resolve("database.db", BaseDirectory::Resource)?,
     )?
     .into_os_string()
     .into_string();
@@ -55,7 +55,7 @@ pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
 pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
     let db_path = app
         .path()
-        .resolve("data/database.db", BaseDirectory::Resource)?
+        .resolve("database.db", BaseDirectory::Resource)?
         .into_os_string()
         .into_string();
     if let Ok(x) = db_path {

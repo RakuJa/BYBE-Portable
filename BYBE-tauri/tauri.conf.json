@@ -20,9 +20,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "data/*"
-    ]
+    "resources": {
+      "data/.env": ".env",
+      "../BYBE-backend/database.db": "database.db"
+    }
   },
   "app": {
     "security": {
@@ -50,6 +51,8 @@
     },
     "permissions": [
       "updater:default",
+      "fs:allow-read-text-file",
+      "fs:allow-resource-read-recursive",
       {
         "identifier": "http:default",
         "allow": [
