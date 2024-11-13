@@ -59,10 +59,12 @@ jobs:
           path: /BYBE-frontend/.env
 
       - name: Copy BYBE-Portable .env to Frontend
-        uses: canastro/copy-file-action@master
-        with:
-          source: ".env"
-          target: "BYBE-frontend/.env"
+        run: |
+          if [ $RUNNER_OS != "Windows" ]; then
+            cp .env BYBE-frontend/.env
+          else
+            Copy-Item -Path .\.env -Destination .\BYBE-frontend\.env
+          fi
 
 
       - name: install Cargo make
