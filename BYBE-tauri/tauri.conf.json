@@ -51,8 +51,7 @@
     },
     "permissions": [
       "updater:default",
-      "fs:allow-read-text-file",
-      "fs:allow-resource-read-recursive",
+      "window:all",
       {
         "identifier": "http:default",
         "allow": [

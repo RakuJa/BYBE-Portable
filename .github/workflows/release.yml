@@ -51,7 +51,7 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04' # This must match the platform value defined above.
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xapp
 
       - name: Remove Frontend default .env
         uses: JesseTG/rm@v1.0.3
@@ -67,7 +67,6 @@ jobs:
         if: matrix.platform != 'windows-latest'
         run:
           cp .env BYBE-frontend/.env
-
 
       - name: install Cargo make
         uses: davidB/rust-cargo-make@v1
@@ -88,7 +87,7 @@ jobs:
         with:
           tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
           releaseName: 'v__VERSION__'
-          releaseBody: 'See the assets to download this version and install. \n for more info on changes look at https://github.com/RakuJa/BYBE/releases and https://github.com/theasel/BYBE-frontend/releases'
+          releaseBody: 'For more info on changes look at https://github.com/RakuJa/BYBE/releases and https://github.com/theasel/BYBE-frontend/releases'
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
