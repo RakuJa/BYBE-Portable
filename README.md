@@ -2,39 +2,52 @@
 Multi-platform portable (offline) application that bundles the BYBE website
 
 ## Build base package locally for Linux/Windows/MacOS
+This build process takes care of everything. You must be connected to the internet during the build process to download required files.
+### Clone repository
+```bash
+git clone --recurse-submodules https://github.com/RakuJa/BYBE-Portable.git
+```
+
 ### Install Tauri-cli
 ```bash
 cargo install tauri-cli
 ```
 
-### Clone repository
+### Install cargo make
 ```bash
-git clone --recurse-submodules https://github.com/RakuJa/BYBE-Portable.git
+cargo install --force cargo-make
 ```
-### Copy the DB in home or change ENV variable
-To let BYBE aka BYBE-backend aka BYBE-core compile, you have to let the Rust library find the database.db file.
-This can be done either by:
+
+### Run the build
 ```bash
-cp . /full/path/to/BYBE-Portable/BYBE-tauri/data/database.db
+cargo make build-app
 ```
-or by:
+
+### Fetch the resulting exe/dmg/appimage
+You should find the result of the build process inside BYBE-tauri/target/release/bundle
+
+## Test and build package while developing 
+Building and testing the package while developing is very slow if you are using the clean build process used for releasing the package.
+To reach faster compile time and adding the possibility of debugging we may use the following strategy.
+
+### Download the DB
+Fetch the correct DB release (should be the highest release number that is <= BYBE-BE version)
+
+ex:
+
+BYBE-BE version = 3.4.0
+
+BYBE-DB versions = 2.3.0, 2.4.0, 3.0.0, 3.5.0
+
+The highest version that is <= 3.4.0 is 3.0.0
+
+or automatically download using
 ```bash
-export DATABASE_URL = /full/path/to/BYBE-Portable/BYBE-tauri/data/database.db
+cargo make prebuild
 ```
-Important! It's better to avoid the latter, as it could result in unexpected behaviour during dev testing
+
 ### Test the application (does not export bundles)
 In the project directory, run
 ```bash
 cargo tauri dev
-```
-### Build the bundle
-In the project directory, run
-```bash
-cargo tauri build
-```
-Errors should only happen if you have a Arch/Fedora distribution and AppImage as target build.
-(https://tauri.app/v1/guides/building/linux/#limitations / https://github.com/linuxdeploy/linuxdeploy/issues/272)
-If there are errors while building the AppImage, first delete the target folder at ./BYBE-tauri/target and when there is no target folder run
-```bash
-NO_STRIP=true cargo tauri build
 ```

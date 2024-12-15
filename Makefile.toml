@@ -13,11 +13,20 @@ cwd = "./BYBE-tauri/"
 command = "cargo"
 args = ["clean"]
 
-[tasks.prebuild]
+[tasks.be_build]
 cwd = "./BYBE-backend/"
 command = "cargo"
 args = ["make", "bybe-release"]
 
+[tasks.prebuild]
+cwd = "./BYBE-backend/"
+command = "cargo"
+args = ["make", "prebuild"]
+
+[tasks.post_build]
+cwd = "./BYBE-backend/"
+command = "cargo"
+args = ["make", "post_build"]
 
 [tasks.build-multiplat-app]
 install_crate = "tauri-cli"
@@ -31,7 +40,6 @@ command = "cargo"
 args = ["tauri", "build"]
 dependencies = ["clean-app", "prebuild"]
 env = { NO_STRIP=true }
-
 
 [tasks.build-app]
 run_task = [
