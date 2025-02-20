@@ -1,6 +1,6 @@
 [package]
 name = "BYBE-Portable"
-version = "2.4.0"
+version = "2.5.0"
 authors = ["RakuJa"]
 
 edition = "2021"
@@ -26,25 +26,25 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.0.3", features = [] }
+tauri-build = { version = "2.0.5", features = [] }
 
 [dependencies]
-tauri = { version = "2.1.1", features = [] }
-tauri-plugin-devtools = "2.0.0"
-tauri-plugin-log = "2.0.2"
+tauri = { version = "2.2.5", features = [] }
+tauri-plugin-log = "2.2.1"
 # Both dialog and updater are used for handling automatic updates
-tauri-plugin-updater = { version = "2.0.2", features = ["rustls-tls"] }
-tauri-plugin-dialog = "2.0.3"
+tauri-plugin-updater = { version = "2.5.0", features = ["rustls-tls"] }
+tauri-plugin-dialog = "2.2.0"
 
+# debug dependencies
+tauri-plugin-devtools = "2.0.0"
 
-anyhow = "1.0.94"
+anyhow = "1.0"
 
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 
 dotenvy = "0.15.7"
-
 bybe = {path = "../BYBE-backend" }
 
 [target.'cfg(windows)'.dependencies]

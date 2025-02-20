@@ -7,6 +7,7 @@
   ],
   "permissions": [
     "core:default",
-    "log:default"
+    "log:default",
+    "updater:allow-download-and-install"
   ]
 }

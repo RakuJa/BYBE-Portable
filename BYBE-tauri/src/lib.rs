@@ -1,7 +1,10 @@
 use bybe::InitializeLogResponsibility;
 use std::thread;
+use log::{info, warn};
 use tauri::path::BaseDirectory;
 use tauri::{App, Manager};
+use tauri_plugin_updater::{UpdaterExt};
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -13,7 +16,14 @@ pub fn run() {
                 .level(log::LevelFilter::Info)
                 .build(),
         )
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                update(handle).await.unwrap();
+            });
+
             #[cfg(debug_assertions)]
             app.get_webview_window("main").unwrap().open_devtools();
             // Get Environmental Variables
@@ -38,12 +48,10 @@ pub fn run() {
 
 #[cfg(target_os = "windows")]
 pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
-    let db_canonical_path = dunce::canonicalize(
-        app.path()
-            .resolve("database.db", BaseDirectory::Resource)?,
-    )?
-    .into_os_string()
-    .into_string();
+    let db_canonical_path =
+        dunce::canonicalize(app.path().resolve("database.db", BaseDirectory::Resource)?)?
+            .into_os_string()
+            .into_string();
     if let Ok(x) = db_canonical_path {
         Ok(x)
     } else {
@@ -63,4 +71,33 @@ pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
     } else {
         anyhow::bail!("Could not correctly get db path.")
     }
+}
+
+
+async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
+    match app.updater()?.check().await? {
+        None => {
+            info!("No update found");
+        }
+        Some(update) => {
+            let mut downloaded = 0;
+            // alternatively we could also call update.download() and update.install() separately
+            update
+                .download_and_install(
+                    |chunk_length, content_length| {
+                        downloaded += chunk_length;
+                        info!("Downloaded {downloaded} from {content_length:?}");
+                    },
+                    || {
+                        info!("Download finished");
+                    },
+                )
+                .await?;
+
+            info!("Update installed");
+            warn!("Restarting app...");
+            app.restart();
+        }
+    }
+    Ok(())
 }
