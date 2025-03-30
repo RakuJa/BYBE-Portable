@@ -85,6 +85,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           NO_STRIP: true
         with:
+          updaterJsonPreferNsis: true
           tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
           releaseName: 'v__VERSION__'
           releaseBody: 'For more info on changes look at https://github.com/RakuJa/BYBE/releases and https://github.com/theasel/BYBE-frontend/releases'
