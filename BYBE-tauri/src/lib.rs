@@ -77,11 +77,11 @@ pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
 #[cfg(target_os = "windows")]
 pub fn get_jsons_path(app: &mut App) -> anyhow::Result<(String, String)> {
     let name_path =
-        dunce::canonicalize(app.path().resolve("data/names.db", BaseDirectory::Resource)?)?
+        dunce::canonicalize(app.path().resolve("data/names.json", BaseDirectory::Resource)?)?
             .into_os_string()
             .into_string();
     let nickname_path =
-        dunce::canonicalize(app.path().resolve("data/nicknames.db", BaseDirectory::Resource)?)?
+        dunce::canonicalize(app.path().resolve("data/nicknames.json", BaseDirectory::Resource)?)?
             .into_os_string()
             .into_string();
     if let Ok(names) = name_path && let Ok(nicknames) = nickname_path {
