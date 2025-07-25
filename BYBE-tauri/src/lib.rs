@@ -49,7 +49,7 @@ pub fn run() {
 #[cfg(target_os = "windows")]
 pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
     let db_canonical_path =
-        dunce::canonicalize(app.path().resolve("database.db", BaseDirectory::Resource)?)?
+        dunce::canonicalize(app.path().resolve("data/database.db", BaseDirectory::Resource)?)?
             .into_os_string()
             .into_string();
     if let Ok(x) = db_canonical_path {
@@ -63,7 +63,7 @@ pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
 pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
     let db_path = app
         .path()
-        .resolve("database.db", BaseDirectory::Resource)?
+        .resolve("data/database.db", BaseDirectory::Resource)?
         .into_os_string()
         .into_string();
     if let Ok(x) = db_path {

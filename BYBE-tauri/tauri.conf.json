@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0-rc",
   "productName": "BYBE-Portable",
-  "version": "2.6.1",
+  "version": "3.0.0",
   "identifier": "com.danielegiachetto.bybe",
   "build": {
     "frontendDist": "../BYBE-frontend/dist/spa",
@@ -22,7 +22,9 @@
     ],
     "resources": {
       "data/.env": ".env",
-      "../BYBE-backend/database.db_copy": "database.db"
+      "../BYBE-backend/data/database.db_copy": "data/database.db",
+      "../BYBE-backend/data/names.json": "data/names.json",
+      "../BYBE-backend/data/nicknames.json": "data/nicknames.json"
     }
   },
   "app": {

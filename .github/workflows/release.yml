@@ -6,7 +6,7 @@ on:
       - release
 
 env:
-  DATABASE_URL: "sqlite://database.db"
+  DATABASE_URL: "sqlite://data/database.db"
 # This workflow will trigger on each push to the `release` branch to create or update a GitHub release, build your app, and upload the artifacts to the release.
 jobs:
   publish-tauri:
