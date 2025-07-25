@@ -36,6 +36,7 @@ pub fn run() {
                 .ok();
             // get DB
             let db_path = get_db_path(app).ok();
+            let jsons_path = get_jsons_path(app).ok();
             thread::spawn(move || {
                 bybe::start(env_path, db_path, InitializeLogResponsibility::Delegated)
                     .expect("Backend should be able to startup, port or ip busy?");
@@ -70,6 +71,42 @@ pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
         Ok(x)
     } else {
         anyhow::bail!("Could not correctly get db path.")
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_jsons_path(app: &mut App) -> anyhow::Result<(String, String)> {
+    let name_path =
+        dunce::canonicalize(app.path().resolve("data/names.db", BaseDirectory::Resource)?)?
+            .into_os_string()
+            .into_string();
+    let nickname_path =
+        dunce::canonicalize(app.path().resolve("data/nicknames.db", BaseDirectory::Resource)?)?
+            .into_os_string()
+            .into_string();
+    if let Ok(names) = name_path && let Ok(nicknames) = nickname_path {
+        Ok((names, nicknames))
+    } else {
+        anyhow::bail!("Could not correctly get name or nicknames path.")
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn get_jsons_path(app: &mut App) -> anyhow::Result<(String, String)> {
+    let name_path = app
+        .path()
+        .resolve("data/names.json", BaseDirectory::Resource)?
+        .into_os_string()
+        .into_string();
+    let nickname_path = app
+        .path()
+        .resolve("data/nickname.json", BaseDirectory::Resource)?
+        .into_os_string()
+        .into_string();
+    if let Ok(names) = name_path && let Ok(nicknames) = nickname_path {
+        Ok((names, nicknames))
+    } else {
+        anyhow::bail!("Could not correctly get name or nicknames path.")
     }
 }
 
