@@ -38,7 +38,7 @@ pub fn run() {
             let db_path = get_db_path(app).ok();
             let jsons_path = get_jsons_path(app).ok();
             thread::spawn(move || {
-                bybe::start(env_path, db_path, InitializeLogResponsibility::Delegated)
+                bybe::start(env_path, db_path, jsons_path, InitializeLogResponsibility::Delegated)
                     .expect("Backend should be able to startup, port or ip busy?");
             });
             Ok(())
