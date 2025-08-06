@@ -1,6 +1,6 @@
 [package]
 name = "BYBE-Portable"
-version = "3.0.1"
+version = "3.0.2"
 authors = ["RakuJa"]
 
 edition = "2024"
@@ -33,10 +33,10 @@ tauri = { version = "2.7.0", features = [] }
 tauri-plugin-log = "2.6.0"
 # Both dialog and updater are used for handling automatic updates
 tauri-plugin-updater = { version = "2.9.0", features = ["rustls-tls"] }
-tauri-plugin-dialog = "2.3.1"
+tauri-plugin-dialog = "2.3.2"
 
 # debug dependencies
-tauri-plugin-devtools = "2.0.0"
+tauri-plugin-devtools = "2.0.1"
 
 anyhow = "1.0"
 
