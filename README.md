@@ -18,6 +18,9 @@ cargo install tauri-cli
 cargo install --force cargo-make
 ```
 
+### Install tauri pre-requisites
+Look at https://v2.tauri.app/start/prerequisites/
+
 ### Run the build
 ```bash
 cargo make build-app

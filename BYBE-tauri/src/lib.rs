@@ -100,7 +100,7 @@ pub fn get_jsons_path(app: &mut App) -> anyhow::Result<(String, String)> {
         .into_string();
     let nickname_path = app
         .path()
-        .resolve("data/nickname.json", BaseDirectory::Resource)?
+        .resolve("data/nicknames.json", BaseDirectory::Resource)?
         .into_os_string()
         .into_string();
     if let Ok(names) = name_path && let Ok(nicknames) = nickname_path {
