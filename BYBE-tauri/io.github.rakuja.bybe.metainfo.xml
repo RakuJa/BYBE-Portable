@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+    <id>io.github.rakuja.bybe</id>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>EUPL-1.2</project_license>
+    <name>Teatro</name>
+    <summary>PF2E/SF2E session creation Helper.</summary>
+
+    <description>
+        <p>
+            Beyond Your Bestiary Explorer (BYBE) provides tools to help Pathfinder 2e and Starfinder 2e Game Masters.
+        </p>
+    </description>
+
+    <launchable type="desktop-id">io.github.rakuja.bybe.desktop</launchable>
+
+    <url type="homepage">https://github.io/RakuJa/bybe</url>
+    <url type="bugtracker">https://github.io/RakuJa/bybe/issues</url>
+
+    <developer_name>RakuJa</developer_name>
+
+    <content_rating type="oars-1.1" />
+
+    <releases>
+        <release version="1.0.0" date="2026-01-24">
+            <description>
+                <p>Initial release</p>
+            </description>
+        </release>
+    </releases>
+
+    <screenshots>
+        <screenshot type="default">
+            <caption>Main application window</caption>
+            https://github.com/TheAsel/BYBE-frontend/blob/develop/.github/encounter_builder.png
+        </screenshot>
+    </screenshots>
+</component>

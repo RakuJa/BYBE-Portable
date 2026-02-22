@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=BYBE
+GenericName=PF2E/SF2E master's helper
+Comment=PF2E/SF2E npc, encounter and shop builder
+Icon=io.github.rakuja.bybe
+Exec=/app/bin/bybe-portable
+Terminal=false
+Categories=Audio;Midi;
+Keywords=audio;midi;controller;akai;

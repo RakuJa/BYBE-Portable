@@ -1,2 +1,6 @@
 .idea/
 database.db
+repo
+build-dir
+.flatpak-builder
+BYBE-tauri/gen

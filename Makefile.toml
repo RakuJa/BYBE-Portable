@@ -4,7 +4,7 @@ run_task = [
 ]
 
 [tasks.clean-backend]
-cwd = "./BYBE-backend/"
+cwd = "./BYBE-tauri/BYBE-backend/"
 command = "cargo"
 args = ["clean"]
 
@@ -14,31 +14,31 @@ command = "cargo"
 args = ["clean"]
 
 [tasks.be_build]
-cwd = "./BYBE-backend/"
+cwd = "./BYBE-tauri/BYBE-backend/"
 command = "cargo"
 args = ["make", "bybe-release"]
 
-[tasks.prebuild]
-cwd = "./BYBE-backend/"
+[tasks.prepare_be]
+cwd = "./BYBE-tauri/BYBE-backend/"
 command = "cargo"
 args = ["make", "prebuild"]
 
 [tasks.post_build]
-cwd = "./BYBE-backend/"
+cwd = "./BYBE-tauri/BYBE-backend/"
 command = "cargo"
 args = ["make", "post_build"]
 
-[tasks.build-multiplat-app]
+[tasks.build]
 install_crate = "tauri-cli"
 command = "cargo"
 args = ["tauri", "build"]
-dependencies = ["clean-app", "prebuild"]
+dependencies = ["clean-app", "prepare_be"]
+
+[tasks.build-multiplat-app]
+dependencies = ["build"]
 
 [tasks.build-linux-app]
-install_crate = "tauri-cli"
-command = "cargo"
-args = ["tauri", "build"]
-dependencies = ["clean-app", "prebuild"]
+dependencies = ["build"]
 env = { NO_STRIP=true }
 
 [tasks.build-app]
