@@ -1,13 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0-rc",
   "productName": "BYBE-Portable",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "identifier": "com.danielegiachetto.bybe",
   "build": {
     "frontendDist": "../BYBE-frontend/dist/spa",
     "devUrl": "http://localhost:9000",
-    "beforeDevCommand": "npm install && npm update && npm run dev",
-    "beforeBuildCommand": "npm install && npm update && npm run build"
+    "beforeDevCommand": "npm install && npm run dev",
+    "beforeBuildCommand": "npm install && npm run build"
   },
   "bundle": {
     "createUpdaterArtifacts": true,
