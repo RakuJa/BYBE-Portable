@@ -1,15 +1,34 @@
-use bybe::InitializeLogResponsibility;
-use std::thread;
+use bybe_backend::InitializeLogResponsibility;
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
 use log::{info, warn};
 use tauri::path::BaseDirectory;
-use tauri::{App, Manager};
+use tauri::{App, Manager, RunEvent};
 use tauri_plugin_updater::{UpdaterExt};
 
+/// Lets us ask the backend thread (actix + pglite) to shut down gracefully
+/// instead of leaving an orphaned postgres process behind when the app exits,
+/// whether via the window close button or Ctrl+C in a dev terminal.
+struct BackendHandle {
+    shutdown_tx: Mutex<Option<bybe_backend::oneshot::Sender<()>>>,
+    join_handle: Mutex<Option<JoinHandle<()>>>,
+}
+
+impl BackendHandle {
+    fn shutdown(&self) {
+        if let Some(tx) = self.shutdown_tx.lock().unwrap().take() {
+            let _ = tx.send(());
+        }
+        if let Some(handle) = self.join_handle.lock().unwrap().take() {
+            let _ = handle.join();
+        }
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
-    builder
+    let app = builder
         .plugin(
             tauri_plugin_log::Builder::new()
                 .max_file_size(50_000 /* bytes */)
@@ -35,25 +54,56 @@ pub fn run() {
                 .into_string()
                 .ok();
             // get DB
-            let db_path = get_db_path(app).ok();
+            let sql_path = get_sql_dump_path(app).ok();
             let jsons_path = get_jsons_path(app).ok();
-            thread::spawn(move || {
-                bybe::start(env_path, db_path, jsons_path, InitializeLogResponsibility::Delegated)
-                    .expect("Backend should be able to startup, port or ip busy?");
+            let (shutdown_tx, shutdown_rx) = bybe_backend::oneshot::channel();
+            let join_handle = thread::spawn(move || {
+                bybe_backend::start(
+                    env_path,
+                    sql_path,
+                    jsons_path,
+                    Some(shutdown_rx),
+                    InitializeLogResponsibility::Delegated,
+                )
+                .expect("Backend should be able to startup, port or ip busy?");
             });
+
+            let backend_handle = Arc::new(BackendHandle {
+                shutdown_tx: Mutex::new(Some(shutdown_tx)),
+                join_handle: Mutex::new(Some(join_handle)),
+            });
+            app.manage(backend_handle.clone());
+
+            // Ctrl+C in a dev terminal kills the process directly, bypassing
+            // Tauri's own exit event, so it needs its own graceful shutdown hook.
+            ctrlc::set_handler(move || {
+                backend_handle.shutdown();
+                std::process::exit(0);
+            })
+            .expect("Should be able to register ctrl-c handler");
+
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if let RunEvent::Exit = event
+            && let Some(backend_handle) = app_handle.try_state::<Arc<BackendHandle>>()
+        {
+            backend_handle.shutdown();
+        }
+    });
 }
 
 #[cfg(target_os = "windows")]
-pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
-    let db_canonical_path =
-        dunce::canonicalize(app.path().resolve("data/database.db", BaseDirectory::Resource)?)?
-            .into_os_string()
-            .into_string();
-    if let Ok(x) = db_canonical_path {
+pub fn get_sql_dump_path(app: &mut App) -> anyhow::Result<String> {
+    let sql_canonical_path = dunce::canonicalize(
+        app.path().resolve("data/bybe_pglite.sql", BaseDirectory::Resource)?,
+    )?
+    .into_os_string()
+    .into_string();
+    if let Ok(x) = sql_canonical_path {
         Ok(x)
     } else {
         anyhow::bail!("Could not correctly get canonical path.")
@@ -61,16 +111,16 @@ pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn get_db_path(app: &mut App) -> anyhow::Result<String> {
-    let db_path = app
+pub fn get_sql_dump_path(app: &mut App) -> anyhow::Result<String> {
+    let sql_path = app
         .path()
-        .resolve("data/database.db", BaseDirectory::Resource)?
+        .resolve("data/bybe_pglite.sql", BaseDirectory::Resource)?
         .into_os_string()
         .into_string();
-    if let Ok(x) = db_path {
+    if let Ok(x) = sql_path {
         Ok(x)
     } else {
-        anyhow::bail!("Could not correctly get db path.")
+        anyhow::bail!("Could not correctly get sql dump path.")
     }
 }
 

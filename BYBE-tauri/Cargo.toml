@@ -1,6 +1,6 @@
 [package]
 name = "BYBE-Portable"
-version = "4.1.2"
+version = "5.0.0"
 authors = ["RakuJa"]
 
 edition = "2024"
@@ -44,7 +44,9 @@ anyhow = "1.0"
 
 log = "0.4"
 
-bybe = {path = "../BYBE-backend" }
+ctrlc = "3.4"
+
+bybe-backend = {path = "../BYBE-backend" }
 
 [target.'cfg(windows)'.dependencies]
 dunce = { version = "1.0.5"}

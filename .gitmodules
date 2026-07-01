@@ -3,4 +3,4 @@
 	url = https://github.com/TheAsel/BYBE-frontend/
 [submodule "BYBE-backend"]
 	path = BYBE-backend
-	url = https://github.com/RakuJa/BYBE/
+	url = https://github.com/RakuJa/BYBE-backend/
