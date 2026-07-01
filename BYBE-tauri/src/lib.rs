@@ -5,12 +5,13 @@ use log::{info, warn};
 use tauri::path::BaseDirectory;
 use tauri::{App, Manager, RunEvent};
 use tauri_plugin_updater::{UpdaterExt};
+use tokio::sync::oneshot;
 
 /// Lets us ask the backend thread (actix + pglite) to shut down gracefully
 /// instead of leaving an orphaned postgres process behind when the app exits,
 /// whether via the window close button or Ctrl+C in a dev terminal.
 struct BackendHandle {
-    shutdown_tx: Mutex<Option<bybe_backend::oneshot::Sender<()>>>,
+    shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
     join_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -56,7 +57,7 @@ pub fn run() {
             // get DB
             let sql_path = get_sql_dump_path(app).ok();
             let jsons_path = get_jsons_path(app).ok();
-            let (shutdown_tx, shutdown_rx) = bybe_backend::oneshot::channel();
+            let (shutdown_tx, shutdown_rx) = oneshot::channel();
             let join_handle = thread::spawn(move || {
                 bybe_backend::start(
                     env_path,

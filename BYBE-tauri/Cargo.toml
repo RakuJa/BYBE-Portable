@@ -47,6 +47,8 @@ log = "0.4"
 ctrlc = "3.4"
 
 bybe-backend = {path = "../BYBE-backend" }
+oneshot = "0.2.1"
+tokio = "1.52.3"
 
 [target.'cfg(windows)'.dependencies]
 dunce = { version = "1.0.5"}
