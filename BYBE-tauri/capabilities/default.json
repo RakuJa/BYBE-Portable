@@ -8,6 +8,21 @@
   "permissions": [
     "core:default",
     "log:default",
-    "updater:allow-download-and-install"
+    "updater:allow-download-and-install",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://2e.aonprd.com/*" },
+        { "url": "https://github.com/*" },
+        { "url": "https://2e.aonsrd.com/*"},
+        { "url": "https://ko-fi.com/theasel"},
+        { "url": "https://store.paizo.com/*"},
+        { "url": "https://bybe.app"},
+        { "url": "https://paizo.com/*"},
+        { "url": "https://www.jorgejacinto.com/*"},
+        { "url": "https://leontukker.artstation.com/*"},
+        { "url": "https://azoralaw.com/orclicense/*"}
+      ]
+    }
   ]
 }

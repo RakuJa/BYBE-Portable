@@ -24,7 +24,8 @@
       "data/.env": ".env",
       "../BYBE-backend/data/bybe_pglite.sql": "data/bybe_pglite.sql",
       "../BYBE-backend/data/names.json": "data/names.json",
-      "../BYBE-backend/data/nicknames.json": "data/nicknames.json"
+      "../BYBE-backend/data/nicknames.json": "data/nicknames.json",
+      "assets/splash.html": "assets/splash.html"
     }
   },
   "app": {
@@ -33,11 +34,13 @@
     },
     "windows": [
       {
+        "label": "main",
         "title": "BYBE-App",
         "width": 1280,
         "height": 720,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "visible": false
       }
     ]
   },
@@ -51,17 +54,6 @@
       "windows": {
         "installMode": "passive"
       }
-    },
-    "permissions": [
-      "updater:default",
-      {
-        "identifier": "http:default",
-        "allow": [
-          {
-            "url": "http://0.0.0.0:25566/*"
-          }
-        ]
-      }
-    ]
+    }
   }
 }

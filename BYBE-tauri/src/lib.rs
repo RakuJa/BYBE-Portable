@@ -1,15 +1,24 @@
-use bybe_backend::InitializeLogResponsibility;
+use bybe_backend::{InitializeLogResponsibility, StartOptions, StartupState};
+use log::{info, warn};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use log::{info, warn};
 use tauri::path::BaseDirectory;
-use tauri::{App, Manager, RunEvent};
-use tauri_plugin_updater::{UpdaterExt};
+use tauri::webview::WebviewWindowBuilder;
+use tauri::{App, Manager, RunEvent, Url, WebviewUrl, WindowEvent};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::oneshot;
 
-/// Lets us ask the backend thread (actix + pglite) to shut down gracefully
-/// instead of leaving an orphaned postgres process behind when the app exits,
-/// whether via the window close button or Ctrl+C in a dev terminal.
+fn db_version_marker_path(pglite_dir: &str) -> String {
+    format!("{pglite_dir}.version")
+}
+
+fn db_setup_matches_version(pglite_dir: &str, current_version: &str) -> bool {
+    std::fs::read_to_string(db_version_marker_path(pglite_dir))
+        .is_ok_and(|marker| marker.trim() == current_version)
+}
+
 struct BackendHandle {
     shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
     join_handle: Mutex<Option<JoinHandle<()>>>,
@@ -34,18 +43,25 @@ pub fn run() {
             tauri_plugin_log::Builder::new()
                 .max_file_size(50_000 /* bytes */)
                 .level(log::LevelFilter::Info)
+                // sqlx logs the full SQL text for any "slow" statement at Warn,
+                // which would otherwise dump the entire multi-thousand-line Clean
+                // setup script into the log in one message.
+                .level_for("sqlx::query", log::LevelFilter::Error)
                 .build(),
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            let main_window = app
+                .get_webview_window("main")
+                .expect("Should be able to open main_window");
+
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                update(handle).await.unwrap();
+                update(handle).await.expect("Should be able to handle update");
             });
 
-            #[cfg(debug_assertions)]
-            app.get_webview_window("main").unwrap().open_devtools();
             // Get Environmental Variables
             let env_path = app
                 .path()
@@ -54,18 +70,111 @@ pub fn run() {
                 .into_os_string()
                 .into_string()
                 .ok();
-            // get DB
-            let sql_path = get_sql_dump_path(app).ok();
             let jsons_path = get_jsons_path(app).ok();
+            let pglite_dir =
+                get_pglite_dir_path(app).expect("Should be able to resolve pglite data directory");
             let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
+            let current_version = app.package_info().version.to_string();
+            let first_startup = !bybe_backend::db_initialized(&pglite_dir)
+                || !db_setup_matches_version(&pglite_dir, &current_version);
+
+            let sql_path = first_startup.then(|| get_sql_dump_path(app).ok()).flatten();
+
+            let (startup_state, ready_tx, ready_rx) = if first_startup {
+                let (tx, rx) = std::sync::mpsc::channel();
+                (StartupState::Clean, Some(tx), Some(rx))
+            } else {
+                (StartupState::Persistent, None, None)
+            };
+
+            if first_startup {
+                let splash_html_path = get_splash_html_path(app)
+                    .expect("Should be able to resolve splash screen resource");
+                let splash_url = Url::from_file_path(&splash_html_path)
+                    .expect("splash html path should be a valid file url");
+                let mut splash_builder =
+                    WebviewWindowBuilder::new(app, "splash", WebviewUrl::External(splash_url))
+                        .title("BYBE - Setting up")
+                        .inner_size(420.0, 220.0)
+                        .resizable(false)
+                        .decorations(false)
+                        .center()
+                        .always_on_top(false)
+                        .devtools(false);
+                if let Some(icon) = app.default_window_icon().cloned() {
+                    splash_builder = splash_builder
+                        .icon(icon)
+                        .expect("Should be able to set splash window icon");
+                }
+                let splash = splash_builder
+                    .build()
+                    .expect("Should be able to create splash window");
+
+                // Undecorated windows have no close button, but the OS-level
+                // shortcuts (Alt+F4, Cmd+Q, etc) still send a close request
+                // `splash.close()` (called below once setup succeeds/fails) fires
+                // this exact same `CloseRequested` event, so we set a flag.
+                // the flag is only "true" while a close is expected
+                // to mean "the user wants to quit".
+                let user_can_quit = Arc::new(AtomicBool::new(true));
+                let user_can_quit_for_handler = user_can_quit.clone();
+                let app_handle_for_splash = app.handle().clone();
+                splash.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { .. } = event
+                        && user_can_quit_for_handler.load(Ordering::SeqCst)
+                    {
+                        app_handle_for_splash.exit(0);
+                    }
+                });
+
+                let marker_path = db_version_marker_path(&pglite_dir);
+                let app_handle_for_failure = app.handle().clone();
+                thread::spawn(move || {
+                    let setup_succeeded = ready_rx
+                        .map(|ready_rx| ready_rx.recv().is_ok())
+                        .unwrap_or(false);
+                    user_can_quit.store(false, Ordering::SeqCst);
+                    if !setup_succeeded {
+                        app_handle_for_failure
+                            .dialog()
+                            .message(
+                                "BYBE could not finish setting up its database. \
+                                 Please restart the app; if the problem persists, check the logs.",
+                            )
+                            .title("Setup failed")
+                            .kind(MessageDialogKind::Error)
+                            .blocking_show();
+                        app_handle_for_failure.exit(1);
+                        return;
+                    }
+                    let _ = std::fs::write(marker_path, &current_version);
+                    // Window operations must happen on the main thread (some
+                    // platforms, e.g. WebKitGTK on Linux, will crash otherwise)
+                    let _ = app_handle_for_failure.run_on_main_thread(move || {
+                        let _ = main_window.show();
+                        let _ = splash.hide();
+                    });
+                });
+            } else {
+                main_window
+                    .show()
+                    .expect("Should be able to show main window");
+                #[cfg(debug_assertions)]
+                main_window.open_devtools();
+            }
+
             let join_handle = thread::spawn(move || {
-                bybe_backend::start(
-                    env_path,
-                    sql_path,
-                    jsons_path,
-                    Some(shutdown_rx),
-                    InitializeLogResponsibility::Delegated,
-                )
+                bybe_backend::start(StartOptions {
+                    env_location: env_path,
+                    sql_location: sql_path,
+                    jsons_location: jsons_path,
+                    pglite_location: Some(pglite_dir),
+                    shutdown_signal: Some(shutdown_rx),
+                    init_log_resp: InitializeLogResponsibility::Delegated,
+                    startup_state_override: Some(startup_state),
+                    ready_signal: ready_tx,
+                })
                 .expect("Backend should be able to startup, port or ip busy?");
             });
 
@@ -99,43 +208,42 @@ pub fn run() {
 
 #[cfg(target_os = "windows")]
 pub fn get_sql_dump_path(app: &mut App) -> anyhow::Result<String> {
-    let sql_canonical_path = dunce::canonicalize(
-        app.path().resolve("data/bybe_pglite.sql", BaseDirectory::Resource)?,
+    Ok(dunce::canonicalize(
+        app.path()
+            .resolve("data/bybe_pglite.sql", BaseDirectory::Resource)?,
     )?
     .into_os_string()
-    .into_string();
-    if let Ok(x) = sql_canonical_path {
-        Ok(x)
-    } else {
-        anyhow::bail!("Could not correctly get canonical path.")
-    }
+    .into_string()
+    .map_err(|x| anyhow::anyhow!("Error fetching sql dump: {:?}", x))?)
 }
 
 #[cfg(not(target_os = "windows"))]
 pub fn get_sql_dump_path(app: &mut App) -> anyhow::Result<String> {
-    let sql_path = app
+    Ok(app
         .path()
         .resolve("data/bybe_pglite.sql", BaseDirectory::Resource)?
         .into_os_string()
-        .into_string();
-    if let Ok(x) = sql_path {
-        Ok(x)
-    } else {
-        anyhow::bail!("Could not correctly get sql dump path.")
-    }
+        .into_string()
+        .map_err(|x| anyhow::anyhow!("Error fetching sql dump: {:?}", x))?)
 }
 
 #[cfg(target_os = "windows")]
 pub fn get_jsons_path(app: &mut App) -> anyhow::Result<(String, String)> {
-    let name_path =
-        dunce::canonicalize(app.path().resolve("data/names.json", BaseDirectory::Resource)?)?
-            .into_os_string()
-            .into_string();
-    let nickname_path =
-        dunce::canonicalize(app.path().resolve("data/nicknames.json", BaseDirectory::Resource)?)?
-            .into_os_string()
-            .into_string();
-    if let Ok(names) = name_path && let Ok(nicknames) = nickname_path {
+    let name_path = dunce::canonicalize(
+        app.path()
+            .resolve("data/names.json", BaseDirectory::Resource)?,
+    )?
+    .into_os_string()
+    .into_string();
+    let nickname_path = dunce::canonicalize(
+        app.path()
+            .resolve("data/nicknames.json", BaseDirectory::Resource)?,
+    )?
+    .into_os_string()
+    .into_string();
+    if let Ok(names) = name_path
+        && let Ok(nicknames) = nickname_path
+    {
         Ok((names, nicknames))
     } else {
         anyhow::bail!("Could not correctly get name or nicknames path.")
@@ -154,13 +262,57 @@ pub fn get_jsons_path(app: &mut App) -> anyhow::Result<(String, String)> {
         .resolve("data/nicknames.json", BaseDirectory::Resource)?
         .into_os_string()
         .into_string();
-    if let Ok(names) = name_path && let Ok(nicknames) = nickname_path {
+    if let Ok(names) = name_path
+        && let Ok(nicknames) = nickname_path
+    {
         Ok((names, nicknames))
     } else {
         anyhow::bail!("Could not correctly get name or nicknames path.")
     }
 }
 
+#[cfg(target_os = "windows")]
+pub fn get_pglite_dir_path(app: &mut App) -> anyhow::Result<String> {
+    let app_data_dir = app.path().app_local_data_dir()?;
+    std::fs::create_dir_all(&app_data_dir)?;
+    Ok(dunce::canonicalize(app_data_dir)?
+        .join(".pglite")
+        .into_os_string()
+        .into_string()
+        .map_err(|x| anyhow::anyhow!("Error fetching pglite data folder path: {:?}", x))?)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn get_pglite_dir_path(app: &mut App) -> anyhow::Result<String> {
+    Ok(app
+        .path()
+        .app_local_data_dir()?
+        .join(".pglite")
+        .into_os_string()
+        .into_string()
+        .map_err(|x| anyhow::anyhow!("Error fetching pglite data folder: {:?}", x))?)
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_splash_html_path(app: &mut App) -> anyhow::Result<String> {
+    Ok(dunce::canonicalize(
+        app.path()
+            .resolve("assets/splash.html", BaseDirectory::Resource)?,
+    )?
+    .into_os_string()
+    .into_string()
+    .map_err(|x| anyhow::anyhow!("Error loading the splash html file from disk: {:?}", x))?)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn get_splash_html_path(app: &mut App) -> anyhow::Result<String> {
+    Ok(app
+        .path()
+        .resolve("assets/splash.html", BaseDirectory::Resource)?
+        .into_os_string()
+        .into_string()
+        .map_err(|x| anyhow::anyhow!("Error loading the splash html file from disk: {:?}", x))?)
+}
 
 async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
     match app.updater()?.check().await? {
