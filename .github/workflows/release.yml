@@ -41,6 +41,9 @@ jobs:
         with:
           node-version: lts/*
 
+      - name: setup bun
+        uses: oven-sh/setup-bun@v2
+
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -80,7 +83,7 @@ jobs:
 
       - name: install frontend dependencies
         working-directory: BYBE-frontend
-        run: npm install
+        run: bun install
 
       - name: build BYBE-Backend downloading necessary data
         run: cargo make prebuild

@@ -1,6 +1,6 @@
 [package]
 name = "BYBE-Portable"
-version = "4.1.2"
+version = "5.0.0"
 authors = ["RakuJa"]
 
 edition = "2024"
@@ -34,6 +34,7 @@ tauri-plugin-log = "2.8"
 # Both dialog and updater are used for handling automatic updates
 tauri-plugin-updater = { version = "2.10", features = ["rustls-tls"] }
 tauri-plugin-dialog = "2.6"
+tauri-plugin-opener = "2.5.4"
 
 # debug dependencies
 # tauri-plugin-devtools = "2.0.1"
@@ -44,7 +45,11 @@ anyhow = "1.0"
 
 log = "0.4"
 
-bybe = {path = "../BYBE-backend" }
+ctrlc = "3.4"
+
+bybe-backend = {path = "../BYBE-backend" }
+oneshot = "0.2.1"
+tokio = "1.52.3"
 
 [target.'cfg(windows)'.dependencies]
 dunce = { version = "1.0.5"}
