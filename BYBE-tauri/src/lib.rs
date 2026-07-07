@@ -10,12 +10,12 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::oneshot;
 
-fn db_version_marker_path(pglite_dir: &str) -> String {
-    format!("{pglite_dir}.version")
+fn db_version_marker_path(db_data_dir: &str) -> String {
+    format!("{db_data_dir}.version")
 }
 
-fn db_setup_matches_version(pglite_dir: &str, current_version: &str) -> bool {
-    std::fs::read_to_string(db_version_marker_path(pglite_dir))
+fn db_setup_matches_version(db_data_dir: &str, current_version: &str) -> bool {
+    std::fs::read_to_string(db_version_marker_path(db_data_dir))
         .is_ok_and(|marker| marker.trim() == current_version)
 }
 
@@ -84,13 +84,13 @@ pub fn run() {
                 .into_string()
                 .ok();
             let jsons_path = get_jsons_path(app).ok();
-            let pglite_dir =
-                get_pglite_dir_path(app).expect("Should be able to resolve pglite data directory");
+            let db_data_dir = get_db_data_dir_path(app)
+                .expect("Should be able to resolve database data directory");
             let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
             let current_version = app.package_info().version.to_string();
-            let first_startup = !bybe_backend::db_initialized(&pglite_dir)
-                || !db_setup_matches_version(&pglite_dir, &current_version);
+            let first_startup = !bybe_backend::db_initialized(&db_data_dir)
+                || !db_setup_matches_version(&db_data_dir, &current_version);
 
             let sql_path = first_startup.then(|| get_sql_dump_path(app).ok()).flatten();
 
@@ -100,7 +100,7 @@ pub fn run() {
                 StartupState::Persistent
             };
             // Always wait for the backend's readiness signal, not just on first
-            // launch: existing pglite data can still fail to start (e.g. left in
+            // launch: existing db data can still fail to start (e.g. left in
             // a dirty state by an unclean shutdown), and without this the normal
             // boot path used to show the main window unconditionally, with no
             // feedback at all if the backend then silently died in its thread.
@@ -146,7 +146,7 @@ pub fn run() {
                     }
                 });
 
-                let marker_path = db_version_marker_path(&pglite_dir);
+                let marker_path = db_version_marker_path(&db_data_dir);
                 let app_handle_for_failure = app.handle().clone();
                 thread::spawn(move || {
                     let setup_succeeded = ready_rx.recv().is_ok();
@@ -183,7 +183,7 @@ pub fn run() {
                     env_location: env_path,
                     sql_location: sql_path,
                     jsons_location: jsons_path,
-                    pglite_location: Some(pglite_dir),
+                    db_data_dir: Some(db_data_dir),
                     shutdown_signal: Some(shutdown_rx),
                     init_log_resp: InitializeLogResponsibility::Delegated,
                     startup_state_override: Some(startup_state),
@@ -286,25 +286,25 @@ pub fn get_jsons_path(app: &mut App) -> anyhow::Result<(String, String)> {
 }
 
 #[cfg(target_os = "windows")]
-pub fn get_pglite_dir_path(app: &mut App) -> anyhow::Result<String> {
+pub fn get_db_data_dir_path(app: &mut App) -> anyhow::Result<String> {
     let app_data_dir = app.path().app_local_data_dir()?;
     std::fs::create_dir_all(&app_data_dir)?;
     Ok(dunce::canonicalize(app_data_dir)?
-        .join(".pglite")
+        .join(".postgres-data")
         .into_os_string()
         .into_string()
-        .map_err(|x| anyhow::anyhow!("Error fetching pglite data folder path: {:?}", x))?)
+        .map_err(|x| anyhow::anyhow!("Error fetching db data folder path: {:?}", x))?)
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn get_pglite_dir_path(app: &mut App) -> anyhow::Result<String> {
+pub fn get_db_data_dir_path(app: &mut App) -> anyhow::Result<String> {
     Ok(app
         .path()
         .app_local_data_dir()?
-        .join(".pglite")
+        .join(".postgres-data")
         .into_os_string()
         .into_string()
-        .map_err(|x| anyhow::anyhow!("Error fetching pglite data folder: {:?}", x))?)
+        .map_err(|x| anyhow::anyhow!("Error fetching db data folder: {:?}", x))?)
 }
 
 #[cfg(target_os = "windows")]
