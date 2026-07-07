@@ -79,7 +79,7 @@ jobs:
             -A "BYBE-Portable-CI (https://github.com/RakuJa/BYBE-Portable)" \
             -o "$RUNNER_TEMP/$PGLITE_LIB_CRATE.tar.gz" \
             "https://crates.io/api/v1/crates/$PGLITE_LIB_CRATE/$PGLITE_LIB_VERSION/download"
-          tar -xzf "$RUNNER_TEMP/$PGLITE_LIB_CRATE.tar.gz" -C "$RUNNER_TEMP"
+          tar --force-local -xzf "$RUNNER_TEMP/$PGLITE_LIB_CRATE.tar.gz" -C "$RUNNER_TEMP"
           mv "$RUNNER_TEMP/$PGLITE_LIB_CRATE-$PGLITE_LIB_VERSION/lib" "$RUNNER_TEMP/pglite-lib"
           echo "PGLITE_LIB_DIR=$RUNNER_TEMP/pglite-lib" >> "$GITHUB_ENV"
 
