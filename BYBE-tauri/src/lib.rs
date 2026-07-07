@@ -19,6 +19,19 @@ fn db_setup_matches_version(pglite_dir: &str, current_version: &str) -> bool {
         .is_ok_and(|marker| marker.trim() == current_version)
 }
 
+fn show_setup_failed_dialog_and_quit(app_handle: &tauri::AppHandle) {
+    app_handle
+        .dialog()
+        .message(
+            "BYBE could not finish setting up its database. \
+             Please restart the app; if the problem persists, check the logs.",
+        )
+        .title("Setup failed")
+        .kind(MessageDialogKind::Error)
+        .blocking_show();
+    app_handle.exit(1);
+}
+
 struct BackendHandle {
     shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
     join_handle: Mutex<Option<JoinHandle<()>>>,
@@ -81,12 +94,17 @@ pub fn run() {
 
             let sql_path = first_startup.then(|| get_sql_dump_path(app).ok()).flatten();
 
-            let (startup_state, ready_tx, ready_rx) = if first_startup {
-                let (tx, rx) = std::sync::mpsc::channel();
-                (StartupState::Clean, Some(tx), Some(rx))
+            let startup_state = if first_startup {
+                StartupState::Clean
             } else {
-                (StartupState::Persistent, None, None)
+                StartupState::Persistent
             };
+            // Always wait for the backend's readiness signal, not just on first
+            // launch: existing pglite data can still fail to start (e.g. left in
+            // a dirty state by an unclean shutdown), and without this the normal
+            // boot path used to show the main window unconditionally, with no
+            // feedback at all if the backend then silently died in its thread.
+            let (ready_tx, ready_rx) = std::sync::mpsc::channel();
 
             if first_startup {
                 let splash_html_path = get_splash_html_path(app)
@@ -96,7 +114,7 @@ pub fn run() {
                 let mut splash_builder =
                     WebviewWindowBuilder::new(app, "splash", WebviewUrl::External(splash_url))
                         .title("BYBE - Setting up")
-                        .inner_size(420.0, 220.0)
+                        .inner_size(1280.0, 720.0)
                         .resizable(false)
                         .decorations(false)
                         .center()
@@ -131,21 +149,10 @@ pub fn run() {
                 let marker_path = db_version_marker_path(&pglite_dir);
                 let app_handle_for_failure = app.handle().clone();
                 thread::spawn(move || {
-                    let setup_succeeded = ready_rx
-                        .map(|ready_rx| ready_rx.recv().is_ok())
-                        .unwrap_or(false);
+                    let setup_succeeded = ready_rx.recv().is_ok();
                     user_can_quit.store(false, Ordering::SeqCst);
                     if !setup_succeeded {
-                        app_handle_for_failure
-                            .dialog()
-                            .message(
-                                "BYBE could not finish setting up its database. \
-                                 Please restart the app; if the problem persists, check the logs.",
-                            )
-                            .title("Setup failed")
-                            .kind(MessageDialogKind::Error)
-                            .blocking_show();
-                        app_handle_for_failure.exit(1);
+                        show_setup_failed_dialog_and_quit(&app_handle_for_failure);
                         return;
                     }
                     let _ = std::fs::write(marker_path, &current_version);
@@ -157,11 +164,18 @@ pub fn run() {
                     });
                 });
             } else {
-                main_window
-                    .show()
-                    .expect("Should be able to show main window");
-                #[cfg(debug_assertions)]
-                main_window.open_devtools();
+                let app_handle_for_failure = app.handle().clone();
+                thread::spawn(move || {
+                    if ready_rx.recv().is_err() {
+                        show_setup_failed_dialog_and_quit(&app_handle_for_failure);
+                        return;
+                    }
+                    let _ = app_handle_for_failure.run_on_main_thread(move || {
+                        let _ = main_window.show();
+                        #[cfg(debug_assertions)]
+                        main_window.open_devtools();
+                    });
+                });
             }
 
             let join_handle = thread::spawn(move || {
@@ -173,7 +187,7 @@ pub fn run() {
                     shutdown_signal: Some(shutdown_rx),
                     init_log_resp: InitializeLogResponsibility::Delegated,
                     startup_state_override: Some(startup_state),
-                    ready_signal: ready_tx,
+                    ready_signal: Some(ready_tx),
                 })
                 .expect("Backend should be able to startup, port or ip busy?");
             });
