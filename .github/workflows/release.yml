@@ -57,6 +57,32 @@ jobs:
         with:
           platform: x64
 
+      # pglite-rs build.rs only
+      # detects an uncompressed libpglite.a, but the published crate ships a
+      # compressed libpglite.a.zst, so it never reports its location to
+      # pglite-rs-sys. pglite-rs-sys then falls back to downloading a
+      # prebuilt engine tarball from the pglite-rs GitHub release, and that
+      # release has no windows asset at all.
+      - name: fetch pglite-rs windows-gnu engine (packaging bug workaround)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          PGLITE_LIB_CRATE: pglite-rs-lib-x86_64-pc-windows-gnu
+        run: |
+          set -euo pipefail
+          PGLITE_LIB_VERSION=$(sed -n 's/^pglite-rs = { version = "=\([0-9.]*\)".*/\1/p' BYBE-backend/Cargo.toml)
+          if [ -z "$PGLITE_LIB_VERSION" ]; then
+            echo "::error::could not read the pinned pglite-rs version out of BYBE-backend/Cargo.toml (has the pin format changed?)"
+            exit 1
+          fi
+          curl -fsSL \
+            -A "BYBE-Portable-CI (https://github.com/RakuJa/BYBE-Portable)" \
+            -o "$RUNNER_TEMP/$PGLITE_LIB_CRATE.tar.gz" \
+            "https://crates.io/api/v1/crates/$PGLITE_LIB_CRATE/$PGLITE_LIB_VERSION/download"
+          tar -xzf "$RUNNER_TEMP/$PGLITE_LIB_CRATE.tar.gz" -C "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/$PGLITE_LIB_CRATE-$PGLITE_LIB_VERSION/lib" "$RUNNER_TEMP/pglite-lib"
+          echo "PGLITE_LIB_DIR=$RUNNER_TEMP/pglite-lib" >> "$GITHUB_ENV"
+
       - name: install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-24.04' # This must match the platform value defined above.
         run: |
