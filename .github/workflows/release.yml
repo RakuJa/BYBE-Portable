@@ -75,13 +75,14 @@ jobs:
             echo "::error::could not read the pinned pglite-rs version out of BYBE-backend/Cargo.toml (has the pin format changed?)"
             exit 1
           fi
+          WORKDIR=$(cygpath -u "$RUNNER_TEMP")
           curl -fsSL \
             -A "BYBE-Portable-CI (https://github.com/RakuJa/BYBE-Portable)" \
-            -o "$RUNNER_TEMP/$PGLITE_LIB_CRATE.tar.gz" \
+            -o "$WORKDIR/$PGLITE_LIB_CRATE.tar.gz" \
             "https://crates.io/api/v1/crates/$PGLITE_LIB_CRATE/$PGLITE_LIB_VERSION/download"
-          tar --force-local -xzf "$RUNNER_TEMP/$PGLITE_LIB_CRATE.tar.gz" -C "$RUNNER_TEMP"
-          mv "$RUNNER_TEMP/$PGLITE_LIB_CRATE-$PGLITE_LIB_VERSION/lib" "$RUNNER_TEMP/pglite-lib"
-          echo "PGLITE_LIB_DIR=$RUNNER_TEMP/pglite-lib" >> "$GITHUB_ENV"
+          tar --force-local -xzf "$WORKDIR/$PGLITE_LIB_CRATE.tar.gz" -C "$WORKDIR"
+          mv "$WORKDIR/$PGLITE_LIB_CRATE-$PGLITE_LIB_VERSION/lib" "$WORKDIR/pglite-lib"
+          echo "PGLITE_LIB_DIR=$(cygpath -w "$WORKDIR/pglite-lib")" >> "$GITHUB_ENV"
 
       - name: install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-24.04' # This must match the platform value defined above.
