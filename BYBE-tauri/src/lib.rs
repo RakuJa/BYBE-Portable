@@ -183,7 +183,7 @@ pub fn run() {
                     // platforms, e.g. WebKitGTK on Linux, will crash otherwise)
                     let _ = app_handle_for_failure.run_on_main_thread(move || {
                         let _ = main_window.show();
-                        let _ = splash.hide();
+                        let _ = splash.close();
                     });
                 });
             } else {
