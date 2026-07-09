@@ -3,6 +3,7 @@ use log::{info, warn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 use tauri::path::BaseDirectory;
 use tauri::webview::WebviewWindowBuilder;
 use tauri::{App, Manager, RunEvent, Url, WebviewUrl, WindowEvent};
@@ -32,9 +33,12 @@ fn show_setup_failed_dialog_and_quit(app_handle: &tauri::AppHandle) {
     app_handle.exit(1);
 }
 
+const SHUTDOWN_JOIN_TIMEOUT: Duration = Duration::from_secs(5);
+
 struct BackendHandle {
     shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
     join_handle: Mutex<Option<JoinHandle<()>>>,
+    db_data_dir: String,
 }
 
 impl BackendHandle {
@@ -42,8 +46,25 @@ impl BackendHandle {
         if let Some(tx) = self.shutdown_tx.lock().unwrap().take() {
             let _ = tx.send(());
         }
-        if let Some(handle) = self.join_handle.lock().unwrap().take() {
+        let Some(handle) = self.join_handle.lock().unwrap().take() else {
+            return;
+        };
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
             let _ = handle.join();
+            let _ = done_tx.send(());
+        });
+
+        if done_rx.recv_timeout(SHUTDOWN_JOIN_TIMEOUT).is_err() {
+            warn!(
+                "Backend did not shut down within {SHUTDOWN_JOIN_TIMEOUT:?}; force-killing Postgres directly"
+            );
+            if let Err(e) =
+                bybe_backend::force_kill_postgres(std::path::Path::new(&self.db_data_dir))
+            {
+                warn!("Could not force-kill stray Postgres process: {e}");
+            }
         }
     }
 }
@@ -72,7 +93,9 @@ pub fn run() {
 
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                update(handle).await.expect("Should be able to handle update");
+                update(handle)
+                    .await
+                    .expect("Should be able to handle update");
             });
 
             // Get Environmental Variables
@@ -178,6 +201,7 @@ pub fn run() {
                 });
             }
 
+            let db_data_dir_for_backend_handle = db_data_dir.clone();
             let join_handle = thread::spawn(move || {
                 bybe_backend::start(StartOptions {
                     env_location: env_path,
@@ -195,6 +219,7 @@ pub fn run() {
             let backend_handle = Arc::new(BackendHandle {
                 shutdown_tx: Mutex::new(Some(shutdown_tx)),
                 join_handle: Mutex::new(Some(join_handle)),
+                db_data_dir: db_data_dir_for_backend_handle,
             });
             app.manage(backend_handle.clone());
 
@@ -222,23 +247,22 @@ pub fn run() {
 
 #[cfg(target_os = "windows")]
 pub fn get_sql_dump_path(app: &mut App) -> anyhow::Result<String> {
-    Ok(dunce::canonicalize(
+    dunce::canonicalize(
         app.path()
             .resolve("data/bybe_pglite.sql", BaseDirectory::Resource)?,
     )?
     .into_os_string()
     .into_string()
-    .map_err(|x| anyhow::anyhow!("Error fetching sql dump: {:?}", x))?)
+    .map_err(|x| anyhow::anyhow!("Error fetching sql dump: {:?}", x))
 }
 
 #[cfg(not(target_os = "windows"))]
 pub fn get_sql_dump_path(app: &mut App) -> anyhow::Result<String> {
-    Ok(app
-        .path()
+    app.path()
         .resolve("data/bybe_pglite.sql", BaseDirectory::Resource)?
         .into_os_string()
         .into_string()
-        .map_err(|x| anyhow::anyhow!("Error fetching sql dump: {:?}", x))?)
+        .map_err(|x| anyhow::anyhow!("Error fetching sql dump: {:?}", x))
 }
 
 #[cfg(target_os = "windows")]
@@ -289,22 +313,21 @@ pub fn get_jsons_path(app: &mut App) -> anyhow::Result<(String, String)> {
 pub fn get_db_data_dir_path(app: &mut App) -> anyhow::Result<String> {
     let app_data_dir = app.path().app_local_data_dir()?;
     std::fs::create_dir_all(&app_data_dir)?;
-    Ok(dunce::canonicalize(app_data_dir)?
+    dunce::canonicalize(app_data_dir)?
         .join(".postgres-data")
         .into_os_string()
         .into_string()
-        .map_err(|x| anyhow::anyhow!("Error fetching db data folder path: {:?}", x))?)
+        .map_err(|x| anyhow::anyhow!("Error fetching db data folder path: {:?}", x))
 }
 
 #[cfg(not(target_os = "windows"))]
 pub fn get_db_data_dir_path(app: &mut App) -> anyhow::Result<String> {
-    Ok(app
-        .path()
+    app.path()
         .app_local_data_dir()?
         .join(".postgres-data")
         .into_os_string()
         .into_string()
-        .map_err(|x| anyhow::anyhow!("Error fetching db data folder: {:?}", x))?)
+        .map_err(|x| anyhow::anyhow!("Error fetching db data folder: {:?}", x))
 }
 
 #[cfg(target_os = "windows")]
@@ -320,12 +343,11 @@ pub fn get_splash_html_path(app: &mut App) -> anyhow::Result<String> {
 
 #[cfg(not(target_os = "windows"))]
 pub fn get_splash_html_path(app: &mut App) -> anyhow::Result<String> {
-    Ok(app
-        .path()
+    app.path()
         .resolve("assets/splash.html", BaseDirectory::Resource)?
         .into_os_string()
         .into_string()
-        .map_err(|x| anyhow::anyhow!("Error loading the splash html file from disk: {:?}", x))?)
+        .map_err(|x| anyhow::anyhow!("Error loading the splash html file from disk: {:?}", x))
 }
 
 async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
