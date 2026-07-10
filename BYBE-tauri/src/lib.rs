@@ -3,6 +3,7 @@ use log::{info, warn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 use tauri::path::BaseDirectory;
 use tauri::webview::WebviewWindowBuilder;
 use tauri::{App, Manager, RunEvent, Url, WebviewUrl, WindowEvent};
@@ -10,18 +11,34 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::oneshot;
 
-fn db_version_marker_path(pglite_dir: &str) -> String {
-    format!("{pglite_dir}.version")
+fn db_version_marker_path(db_data_dir: &str) -> String {
+    format!("{db_data_dir}.version")
 }
 
-fn db_setup_matches_version(pglite_dir: &str, current_version: &str) -> bool {
-    std::fs::read_to_string(db_version_marker_path(pglite_dir))
+fn db_setup_matches_version(db_data_dir: &str, current_version: &str) -> bool {
+    std::fs::read_to_string(db_version_marker_path(db_data_dir))
         .is_ok_and(|marker| marker.trim() == current_version)
 }
+
+fn show_setup_failed_dialog_and_quit(app_handle: &tauri::AppHandle) {
+    app_handle
+        .dialog()
+        .message(
+            "BYBE could not finish setting up its database. \
+             Please restart the app; if the problem persists, check the logs.",
+        )
+        .title("Setup failed")
+        .kind(MessageDialogKind::Error)
+        .blocking_show();
+    app_handle.exit(1);
+}
+
+const SHUTDOWN_JOIN_TIMEOUT: Duration = Duration::from_secs(5);
 
 struct BackendHandle {
     shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
     join_handle: Mutex<Option<JoinHandle<()>>>,
+    db_data_dir: String,
 }
 
 impl BackendHandle {
@@ -29,8 +46,25 @@ impl BackendHandle {
         if let Some(tx) = self.shutdown_tx.lock().unwrap().take() {
             let _ = tx.send(());
         }
-        if let Some(handle) = self.join_handle.lock().unwrap().take() {
+        let Some(handle) = self.join_handle.lock().unwrap().take() else {
+            return;
+        };
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
             let _ = handle.join();
+            let _ = done_tx.send(());
+        });
+
+        if done_rx.recv_timeout(SHUTDOWN_JOIN_TIMEOUT).is_err() {
+            warn!(
+                "Backend did not shut down within {SHUTDOWN_JOIN_TIMEOUT:?}; force-killing Postgres directly"
+            );
+            if let Err(e) =
+                bybe_backend::force_kill_postgres(std::path::Path::new(&self.db_data_dir))
+            {
+                warn!("Could not force-kill stray Postgres process: {e}");
+            }
         }
     }
 }
@@ -59,7 +93,9 @@ pub fn run() {
 
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                update(handle).await.expect("Should be able to handle update");
+                update(handle)
+                    .await
+                    .expect("Should be able to handle update");
             });
 
             // Get Environmental Variables
@@ -71,22 +107,27 @@ pub fn run() {
                 .into_string()
                 .ok();
             let jsons_path = get_jsons_path(app).ok();
-            let pglite_dir =
-                get_pglite_dir_path(app).expect("Should be able to resolve pglite data directory");
+            let db_data_dir = get_db_data_dir_path(app)
+                .expect("Should be able to resolve database data directory");
             let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
             let current_version = app.package_info().version.to_string();
-            let first_startup = !bybe_backend::db_initialized(&pglite_dir)
-                || !db_setup_matches_version(&pglite_dir, &current_version);
+            let first_startup = !bybe_backend::db_initialized(&db_data_dir)
+                || !db_setup_matches_version(&db_data_dir, &current_version);
 
             let sql_path = first_startup.then(|| get_sql_dump_path(app).ok()).flatten();
 
-            let (startup_state, ready_tx, ready_rx) = if first_startup {
-                let (tx, rx) = std::sync::mpsc::channel();
-                (StartupState::Clean, Some(tx), Some(rx))
+            let startup_state = if first_startup {
+                StartupState::Clean
             } else {
-                (StartupState::Persistent, None, None)
+                StartupState::Persistent
             };
+            // Always wait for the backend's readiness signal, not just on first
+            // launch: existing db data can still fail to start (e.g. left in
+            // a dirty state by an unclean shutdown), and without this the normal
+            // boot path used to show the main window unconditionally, with no
+            // feedback at all if the backend then silently died in its thread.
+            let (ready_tx, ready_rx) = std::sync::mpsc::channel();
 
             if first_startup {
                 let splash_html_path = get_splash_html_path(app)
@@ -96,7 +137,7 @@ pub fn run() {
                 let mut splash_builder =
                     WebviewWindowBuilder::new(app, "splash", WebviewUrl::External(splash_url))
                         .title("BYBE - Setting up")
-                        .inner_size(420.0, 220.0)
+                        .inner_size(1280.0, 720.0)
                         .resizable(false)
                         .decorations(false)
                         .center()
@@ -128,24 +169,13 @@ pub fn run() {
                     }
                 });
 
-                let marker_path = db_version_marker_path(&pglite_dir);
+                let marker_path = db_version_marker_path(&db_data_dir);
                 let app_handle_for_failure = app.handle().clone();
                 thread::spawn(move || {
-                    let setup_succeeded = ready_rx
-                        .map(|ready_rx| ready_rx.recv().is_ok())
-                        .unwrap_or(false);
+                    let setup_succeeded = ready_rx.recv().is_ok();
                     user_can_quit.store(false, Ordering::SeqCst);
                     if !setup_succeeded {
-                        app_handle_for_failure
-                            .dialog()
-                            .message(
-                                "BYBE could not finish setting up its database. \
-                                 Please restart the app; if the problem persists, check the logs.",
-                            )
-                            .title("Setup failed")
-                            .kind(MessageDialogKind::Error)
-                            .blocking_show();
-                        app_handle_for_failure.exit(1);
+                        show_setup_failed_dialog_and_quit(&app_handle_for_failure);
                         return;
                     }
                     let _ = std::fs::write(marker_path, &current_version);
@@ -153,27 +183,35 @@ pub fn run() {
                     // platforms, e.g. WebKitGTK on Linux, will crash otherwise)
                     let _ = app_handle_for_failure.run_on_main_thread(move || {
                         let _ = main_window.show();
-                        let _ = splash.hide();
+                        let _ = splash.close();
                     });
                 });
             } else {
-                main_window
-                    .show()
-                    .expect("Should be able to show main window");
-                #[cfg(debug_assertions)]
-                main_window.open_devtools();
+                let app_handle_for_failure = app.handle().clone();
+                thread::spawn(move || {
+                    if ready_rx.recv().is_err() {
+                        show_setup_failed_dialog_and_quit(&app_handle_for_failure);
+                        return;
+                    }
+                    let _ = app_handle_for_failure.run_on_main_thread(move || {
+                        let _ = main_window.show();
+                        #[cfg(debug_assertions)]
+                        main_window.open_devtools();
+                    });
+                });
             }
 
+            let db_data_dir_for_backend_handle = db_data_dir.clone();
             let join_handle = thread::spawn(move || {
                 bybe_backend::start(StartOptions {
                     env_location: env_path,
                     sql_location: sql_path,
                     jsons_location: jsons_path,
-                    pglite_location: Some(pglite_dir),
+                    db_data_dir: Some(db_data_dir),
                     shutdown_signal: Some(shutdown_rx),
                     init_log_resp: InitializeLogResponsibility::Delegated,
                     startup_state_override: Some(startup_state),
-                    ready_signal: ready_tx,
+                    ready_signal: Some(ready_tx),
                 })
                 .expect("Backend should be able to startup, port or ip busy?");
             });
@@ -181,6 +219,7 @@ pub fn run() {
             let backend_handle = Arc::new(BackendHandle {
                 shutdown_tx: Mutex::new(Some(shutdown_tx)),
                 join_handle: Mutex::new(Some(join_handle)),
+                db_data_dir: db_data_dir_for_backend_handle,
             });
             app.manage(backend_handle.clone());
 
@@ -208,23 +247,22 @@ pub fn run() {
 
 #[cfg(target_os = "windows")]
 pub fn get_sql_dump_path(app: &mut App) -> anyhow::Result<String> {
-    Ok(dunce::canonicalize(
+    dunce::canonicalize(
         app.path()
             .resolve("data/bybe_pglite.sql", BaseDirectory::Resource)?,
     )?
     .into_os_string()
     .into_string()
-    .map_err(|x| anyhow::anyhow!("Error fetching sql dump: {:?}", x))?)
+    .map_err(|x| anyhow::anyhow!("Error fetching sql dump: {:?}", x))
 }
 
 #[cfg(not(target_os = "windows"))]
 pub fn get_sql_dump_path(app: &mut App) -> anyhow::Result<String> {
-    Ok(app
-        .path()
+    app.path()
         .resolve("data/bybe_pglite.sql", BaseDirectory::Resource)?
         .into_os_string()
         .into_string()
-        .map_err(|x| anyhow::anyhow!("Error fetching sql dump: {:?}", x))?)
+        .map_err(|x| anyhow::anyhow!("Error fetching sql dump: {:?}", x))
 }
 
 #[cfg(target_os = "windows")]
@@ -272,25 +310,24 @@ pub fn get_jsons_path(app: &mut App) -> anyhow::Result<(String, String)> {
 }
 
 #[cfg(target_os = "windows")]
-pub fn get_pglite_dir_path(app: &mut App) -> anyhow::Result<String> {
+pub fn get_db_data_dir_path(app: &mut App) -> anyhow::Result<String> {
     let app_data_dir = app.path().app_local_data_dir()?;
     std::fs::create_dir_all(&app_data_dir)?;
-    Ok(dunce::canonicalize(app_data_dir)?
-        .join(".pglite")
+    dunce::canonicalize(app_data_dir)?
+        .join(".postgres-data")
         .into_os_string()
         .into_string()
-        .map_err(|x| anyhow::anyhow!("Error fetching pglite data folder path: {:?}", x))?)
+        .map_err(|x| anyhow::anyhow!("Error fetching db data folder path: {:?}", x))
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn get_pglite_dir_path(app: &mut App) -> anyhow::Result<String> {
-    Ok(app
-        .path()
+pub fn get_db_data_dir_path(app: &mut App) -> anyhow::Result<String> {
+    app.path()
         .app_local_data_dir()?
-        .join(".pglite")
+        .join(".postgres-data")
         .into_os_string()
         .into_string()
-        .map_err(|x| anyhow::anyhow!("Error fetching pglite data folder: {:?}", x))?)
+        .map_err(|x| anyhow::anyhow!("Error fetching db data folder: {:?}", x))
 }
 
 #[cfg(target_os = "windows")]
@@ -306,12 +343,11 @@ pub fn get_splash_html_path(app: &mut App) -> anyhow::Result<String> {
 
 #[cfg(not(target_os = "windows"))]
 pub fn get_splash_html_path(app: &mut App) -> anyhow::Result<String> {
-    Ok(app
-        .path()
+    app.path()
         .resolve("assets/splash.html", BaseDirectory::Resource)?
         .into_os_string()
         .into_string()
-        .map_err(|x| anyhow::anyhow!("Error loading the splash html file from disk: {:?}", x))?)
+        .map_err(|x| anyhow::anyhow!("Error loading the splash html file from disk: {:?}", x))
 }
 
 async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
