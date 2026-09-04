@@ -4,12 +4,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::path::BaseDirectory;
 use tauri::webview::WebviewWindowBuilder;
 use tauri::{App, Manager, RunEvent, Url, WebviewUrl, WindowEvent};
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_global_shortcut::ShortcutState;
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::oneshot;
+
+/// Toggles the native menu bar on/off; kept working even while the menu is
+/// hidden (unlike a menu accelerator, which disappears along with the menu).
+const TOGGLE_MENU_BAR_SHORTCUT: &str = "ctrl+shift+m";
 
 fn db_version_marker_path(db_data_dir: &str) -> String {
     format!("{db_data_dir}.version")
@@ -86,16 +92,52 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_shortcut(TOGGLE_MENU_BAR_SHORTCUT)
+                .expect("Should be able to parse the menu-bar toggle shortcut")
+                .with_handler(|app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        toggle_menu_bar_visibility(app);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             let main_window = app
                 .get_webview_window("main")
                 .expect("Should be able to open main_window");
 
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                update(handle)
-                    .await
-                    .expect("Should be able to handle update");
+            // Add options to menu bar, since fe does not want to implement them
+            const CHECK_FOR_UPDATES_MENU_ID: &str = "check-for-updates";
+            const HIDE_MENU_BAR_MENU_ID: &str = "hide-menu-bar";
+            let check_for_updates_item =
+                MenuItemBuilder::with_id(CHECK_FOR_UPDATES_MENU_ID, "Check for Updates…")
+                    .build(app)
+                    .expect("Should be able to build check-for-updates menu item");
+            let hide_menu_bar_item = MenuItemBuilder::with_id(
+                HIDE_MENU_BAR_MENU_ID,
+                format!("Hide Menu Bar ({TOGGLE_MENU_BAR_SHORTCUT} to bring it back)"),
+            )
+            .build(app)
+            .expect("Should be able to build hide-menu-bar menu item");
+            let help_menu = SubmenuBuilder::new(app, "Help")
+                .item(&check_for_updates_item)
+                .item(&hide_menu_bar_item)
+                .build()
+                .expect("Should be able to build help menu");
+            let menu = MenuBuilder::new(app)
+                .item(&help_menu)
+                .build()
+                .expect("Should be able to build app menu");
+            app.set_menu(menu).expect("Should be able to set app menu");
+            app.on_menu_event(move |app_handle, event| {
+                if event.id() == CHECK_FOR_UPDATES_MENU_ID {
+                    let handle = app_handle.clone();
+                    thread::spawn(move || check_for_update(handle, true));
+                } else if event.id() == HIDE_MENU_BAR_MENU_ID {
+                    toggle_menu_bar_visibility(app_handle);
+                }
             });
 
             // Get Environmental Variables
@@ -185,6 +227,7 @@ pub fn run() {
                         let _ = main_window.show();
                         let _ = splash.close();
                     });
+                    check_for_update(app_handle_for_failure, false);
                 });
             } else {
                 let app_handle_for_failure = app.handle().clone();
@@ -198,6 +241,7 @@ pub fn run() {
                         #[cfg(debug_assertions)]
                         main_window.open_devtools();
                     });
+                    check_for_update(app_handle_for_failure, false);
                 });
             }
 
@@ -350,30 +394,122 @@ pub fn get_splash_html_path(app: &mut App) -> anyhow::Result<String> {
         .map_err(|x| anyhow::anyhow!("Error loading the splash html file from disk: {:?}", x))
 }
 
-async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
-    match app.updater()?.check().await? {
-        None => {
-            info!("No update found");
-        }
-        Some(update) => {
-            let mut downloaded = 0;
-            // alternatively we could also call update.download() and update.install() separately
-            update
-                .download_and_install(
-                    |chunk_length, content_length| {
-                        downloaded += chunk_length;
-                        info!("Downloaded {downloaded} from {content_length:?}");
-                    },
-                    || {
-                        info!("Download finished");
-                    },
-                )
-                .await?;
-
-            info!("Update installed");
-            warn!("Restarting app...");
-            app.restart();
-        }
+fn toggle_menu_bar_visibility(app: &tauri::AppHandle) {
+    let Some(main_window) = app.get_webview_window("main") else {
+        return;
+    };
+    let is_visible = main_window.is_menu_visible().unwrap_or(true);
+    let result = if is_visible {
+        main_window.hide_menu()
+    } else {
+        main_window.show_menu()
+    };
+    if let Err(e) = result {
+        warn!("Could not toggle menu bar visibility: {e}");
     }
-    Ok(())
+}
+
+
+fn check_for_update(app: tauri::AppHandle, force_prompt: bool) {
+    // The update flow blocks on dialog prompts, so it is run on its own
+    // background thread (never the UI main thread) after the splash/main
+    // window has already been shown.
+    if let Err(e) = tauri::async_runtime::block_on(update(app, force_prompt)) {
+        warn!("Update check failed: {e}");
+    }
+}
+
+fn update_preference_path(app: &tauri::AppHandle) -> anyhow::Result<std::path::PathBuf> {
+    Ok(app.path().app_config_dir()?.join("update_preference"))
+}
+
+fn read_update_preference(app: &tauri::AppHandle) -> Option<bool> {
+    let path = update_preference_path(app).ok()?;
+    match std::fs::read_to_string(path).ok()?.trim() {
+        "yes" => Some(true),
+        "no" => Some(false),
+        _ => None,
+    }
+}
+
+fn write_update_preference(app: &tauri::AppHandle, install: bool) {
+    let Ok(path) = update_preference_path(app) else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, if install { "yes" } else { "no" });
+}
+
+fn prompt_for_update(app: &tauri::AppHandle, version: &str) -> bool {
+    let install = app
+        .dialog()
+        .message(format!(
+            "A new version ({version}) of BYBE is available. Do you want to install it now?"
+        ))
+        .title("Update available")
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::YesNo)
+        .blocking_show();
+
+    let remember = app
+        .dialog()
+        .message("Do you want to save this choice for the future updates as well?")
+        .title("Remember choice")
+        .kind(MessageDialogKind::Info)
+        .buttons(MessageDialogButtons::YesNo)
+        .blocking_show();
+
+    if remember {
+        write_update_preference(app, install);
+    }
+
+    install
+}
+
+async fn update(app: tauri::AppHandle, force_prompt: bool) -> tauri_plugin_updater::Result<()> {
+    let Some(update) = app.updater()?.check().await? else {
+        info!("No update found");
+        if force_prompt {
+            app.dialog()
+                .message("You are already using the latest version of BYBE.")
+                .title("No update available")
+                .kind(MessageDialogKind::Info)
+                .blocking_show();
+        }
+        return Ok(());
+    };
+
+    let install = if force_prompt {
+        prompt_for_update(&app, &update.version)
+    } else {
+        match read_update_preference(&app) {
+            Some(remembered) => remembered,
+            None => prompt_for_update(&app, &update.version),
+        }
+    };
+
+    if !install {
+        info!("User declined update");
+        return Ok(());
+    }
+
+    let mut downloaded = 0;
+    // alternatively we could also call update.download() and update.install() separately
+    update
+        .download_and_install(
+            |chunk_length, content_length| {
+                downloaded += chunk_length;
+                info!("Downloaded {downloaded} from {content_length:?}");
+            },
+            || {
+                info!("Download finished");
+            },
+        )
+        .await?;
+
+    info!("Update installed");
+    warn!("Restarting app...");
+    app.restart()
 }

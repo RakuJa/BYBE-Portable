@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - release
-
-env:
-  DATABASE_URL: "sqlite://data/database.db"
-# This workflow will trigger on each push to the `release` branch to create or update a GitHub release, build your app, and upload the artifacts to the release.
 jobs:
   publish-tauri:
     permissions:
@@ -27,7 +23,7 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #7.0.1
         with:
           submodules: 'true'
       - name: setup python
@@ -37,12 +33,12 @@ jobs:
           check-latest: 'true'
 
       - name: setup node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 #7.0.0
         with:
           node-version: lts/*
 
       - name: setup bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 #2.2.0
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -63,9 +59,8 @@ jobs:
           gir1.2-webkit2-4.1=2.44.0-2; 
 
       - name: Remove Frontend default .env
-        uses: JesseTG/rm@v1.0.3
-        with:
-          path: /BYBE-frontend/.env
+        shell: bash
+        run: rm -f BYBE-frontend/.env
 
       - name: Copy BYBE-Portable .env to Frontend (Windows)
         if: matrix.platform == 'windows-latest'
@@ -87,7 +82,7 @@ jobs:
       - name: build BYBE-Backend downloading necessary data
         run: cargo make prebuild
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f #1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
