@@ -1,6 +1,6 @@
 [package]
 name = "BYBE-Portable"
-version = "5.0.1"
+version = "5.1.0"
 authors = ["RakuJa"]
 
 edition = "2024"
